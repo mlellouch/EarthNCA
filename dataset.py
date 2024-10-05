@@ -3,6 +3,8 @@ from pathlib import Path
 from torch.utils.data import Dataset
 import torch
 
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
 class SimDataset(Dataset):
 
     @staticmethod
@@ -26,8 +28,7 @@ class SimDataset(Dataset):
         elif logarithmic_normalize:
             self.data = self._linear_normalize(self._logarithmic_normalize(self.data))
 
-
-
+        self.data = self.data.to(device=device)
 
     def __len__(self):
         return self.data.shape[0]

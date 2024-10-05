@@ -39,7 +39,7 @@ class GridModel(torch.nn.Module):
             current_idx += 1
 
         depth_cells = int(depth * current_idx)
-        grid = torch.randn(size=[encoding_size, depth_cells, current_idx], dtype=torch.float32)
+        grid = torch.randn(size=[encoding_size, depth_cells, current_idx], dtype=torch.float32, device=device)
         return grid, torch.tensor(receptor_indices, dtype=torch.long), torch.tensor(source_indices)
 
     def _prepare_grid(self, grid: torch.Tensor, encode_depth: bool, zero_dynamic_state: bool) -> torch.Tensor:
@@ -89,14 +89,12 @@ class GridModel(torch.nn.Module):
             self.grid[self.static_encoding_size:, :, :,] = torch.randn([self.grid[0], self.grid[1], self.dynamic_encoding_size], device=self.grid.device, dtype=self.grid.dtype)
 
     def update_grid(self, new_dynamic_state: torch.Tensor):
-        self.grid[self.static_encoding_size:, :, :] = new_dynamic_state
+        self.grid.data[self.static_encoding_size:, :, :] = new_dynamic_state
 
-    def start_run(self, source_idx):
+    def start_run(self, receptor_state: torch.Tensor):
         with torch.no_grad():
             self._init_grid_before_run()
-            source_location = self.source_indices[source_idx]
-            self.grid[self.static_encoding_size, 0, :] = 0.0 # zero all places not at sources
-            self.grid[self.static_encoding_size, 0, source_location] = 1.0
+            self.grid[self.static_encoding_size, 0, :][self.receptor_indices] = receptor_state
 
     def get_receptor_amplitude(self):
         return self.grid[self.static_encoding_size, 0, self.receptor_indices]
@@ -127,17 +125,18 @@ class NCA:
 
     def __init__(self, grid_model: GridModel, network: nn.Module, output_path: Path):
         self.grid = grid_model
-        self.network = network
+        self.network = network.to(device=device)
         self.output_path = output_path
 
     def _train_step(self, dataset: SimDataset, params: TrainParams):
-        for source in range(len(dataset)):
+        for source in tqdm(range(len(dataset)), desc='source'):
             source_data = dataset[source].to(device=device)
-            self.grid.start_run(source_idx=source)
+            self.grid.start_run(receptor_state=source_data[:, 0])
             for timestamp in range(source_data.shape[1]):
                 loss = self.criterion(self.grid.get_receptor_amplitude(), source_data[:, timestamp])
                 loss.backward()
                 (params.homogeneity_weight * homogeneity_loss(self.grid.get_dynamic_state())).backward()
+                self.grid.update_grid(new_dynamic_state=self.network(self.grid.grid)) # update grid
                 if timestamp % params.timestamp_batches == 0:
                     self.optimizer.step()
                     self.optimizer.zero_grad()

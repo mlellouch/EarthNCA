@@ -1,0 +1,24 @@
+exp_name = 01_large_network
+
+logarithmic_normalize = True
+linear_normalize = False
+
+resolution = 3
+static_encoding_size = 10
+dynamic_encoding_size = 10
+add_extra_layer = True
+depth_ratio = 0.33
+encode_depth = True
+zero_dynamic_state = True
+
+kernel_size = 3
+channels = 128
+mlp_width = 384
+mlp_depth = 6
+
+epochs = 5
+timestamp_batches = 20
+save_model_n_step = 0
+lr = 0.0001
+homogeneity_loss_weight = 0
+
